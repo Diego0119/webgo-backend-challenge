@@ -213,3 +213,200 @@ Content-Type: application/json
     "validUntil": "2026-12-31T23:59:59-03:00"
   }
 }
+
+### ══════════════════════════════════════════════════
+### Validación de Reglas de Negocio
+### ══════════════════════════════════════════════════
+
+### ─────────────────────────────────────────────────
+### RN1. Código único por tienda — crear código duplicado
+### Esperado: error DUPLICATE_CODE
+### (ejecutar después del request 1 para que VERANO2026 ya exista)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/createCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "code": "VERANO2026",
+    "discountType": "percentage",
+    "discountValue": 10,
+    "validFrom": "2026-01-01T00:00:00-03:00",
+    "validUntil": "2026-12-31T23:59:59-03:00"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### RN2. Normalización — buscar con distinta capitalización
+### Esperado: encuentra el cupón "BIENVENIDO" del seed
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/validateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "code": "bienvenido",
+    "cartTotal": 50000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### RN3. Fechas — validFrom posterior a validUntil
+### Esperado: error de validación Zod
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/createCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "code": "FECHAMAL",
+    "discountType": "fixed",
+    "discountValue": 1000,
+    "validFrom": "2026-12-31T23:59:59-03:00",
+    "validUntil": "2026-01-01T00:00:00-03:00"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### RN5. Mínimo de compra — cartTotal menor a minPurchase
+### Esperado: error MIN_PURCHASE_NOT_MET
+### (ejecutar después del request 1 que crea VERANO2026 con minPurchase: 10000)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/validateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "code": "VERANO2026",
+    "cartTotal": 5000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### RN6. Estado activo — desactivar cupón y luego validar
+### Paso 1: desactivar el cupón del seed
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/updateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "couponId": "coupon001",
+    "isActive": false
+  }
+}
+
+### ─────────────────────────────────────────────────
+### RN6. Estado activo — validar cupón desactivado
+### Esperado: error COUPON_INACTIVE
+### (ejecutar después del paso anterior)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/validateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "code": "BIENVENIDO",
+    "cartTotal": 50000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### RN7. Porcentaje > 100 — ya cubierto por request 12
+### Esperado: error de validación Zod "Porcentaje no puede superar 100%"
+### ─────────────────────────────────────────────────
+
+### ─────────────────────────────────────────────────
+### RN8. Rango de fechas en update — solo validFrom sin validUntil
+### Esperado: error si validFrom queda posterior a validUntil existente
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/updateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "couponId": "coupon001",
+    "validFrom": "2027-06-01T00:00:00-03:00"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### Seguridad — cupón de otro sitio
+### Esperado: error SITE_NOT_FOUND
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/getCoupons
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "sitio-inexistente"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### Seguridad — eliminar cupón con siteId incorrecto
+### Esperado: error SITE_NOT_FOUND (el sitio no existe)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/deleteCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "otro-sitio",
+    "couponId": "coupon001"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### Validación — campos vacíos
+### Esperado: error INVALID_INPUT
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/createCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "",
+    "code": "",
+    "discountType": "percentage",
+    "discountValue": 10,
+    "validFrom": "2026-01-01T00:00:00-03:00",
+    "validUntil": "2026-12-31T23:59:59-03:00"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### Validación — discountValue negativo
+### Esperado: error INVALID_INPUT
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/createCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "code": "NEGATIVO",
+    "discountType": "fixed",
+    "discountValue": -500,
+    "validFrom": "2026-01-01T00:00:00-03:00",
+    "validUntil": "2026-12-31T23:59:59-03:00"
+  }
+}
