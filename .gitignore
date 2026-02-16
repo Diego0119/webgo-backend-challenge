@@ -15,3 +15,8 @@ seed-output.txt
 
 # Internal docs (evaluation rubrics, reference solutions)
 docs/
+
+# Claude Code context (personal)
+.claude/
+CLAUDE.md
+.clauderc
