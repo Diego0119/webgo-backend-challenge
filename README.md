@@ -42,17 +42,18 @@ src/
     config.ts                       # Region (us-central1)
     limits.ts                       # Helper de limites por plan
   types/
-    common.ts                       # FunctionResponse<T>
+    common.ts                       # FunctionResponse<T>, ErrorCode enum
     coupon.ts                       # Tipos de cupones, request y response
   functions/
     coupons/
       index.ts                      # Registro de las 6 onCall functions
       schemas.ts                    # Validacion Zod con refine cross-field
       handlers.ts                   # Logica de los 6 handlers
+      helpers.ts                    # Utilidades: validacion de elegibilidad, calculo de descuento, error handling
 tests/
   schemas.test.ts                   # 36 tests unitarios
 seed.ts                             # Script de datos de prueba (idempotente)
-test-requests.http                  # 35+ requests HTTP para validacion manual
+test-requests.http                  # 50+ requests HTTP para validacion manual
 firestore.rules                     # Reglas abiertas (emulador) + reglas de produccion comentadas
 ```
 
@@ -171,7 +172,7 @@ El seed es idempotente: limpia datos existentes antes de insertar. Los dos tenan
 
 ## Requests de prueba
 
-El archivo `test-requests.http` (VS Code REST Client) contiene **35+ requests** organizados por categoria:
+El archivo `test-requests.http` (VS Code REST Client) contiene **requests** organizados por categoria:
 
 - **CRUD basico:** crear, listar, actualizar y eliminar cupones
 - **Reglas de negocio (RN1-RN8):** codigo duplicado, normalizacion case-insensitive, fechas invertidas, agotamiento de maxUses, monto minimo, cupon desactivado, validacion cruzada de fechas en update
