@@ -197,8 +197,7 @@ http://localhost:4000 → Firestore para inspeccionar documentos.
 
 1. **Código fuente** — repositorio GitHub o ZIP
 2. **README** actualizado con:
-   - Tus decisiones de diseño y trade-offs
-   - Qué harías diferente con más tiempo
+   - Tus decisiones y detalles
 3. **Requests de prueba** — para probar las 6 funciones
 
 ---
@@ -208,7 +207,6 @@ http://localhost:4000 → Firestore para inspeccionar documentos.
 - Los emuladores son locales — no necesitas cuenta de Firebase
 - Revisa los archivos en `src/types/` y `src/lib/` antes de empezar
 - El archivo `limits.ts` es un buen ejemplo del estilo de código esperado
-- Haz commits frecuentes con mensajes descriptivos
 
 ---
 
