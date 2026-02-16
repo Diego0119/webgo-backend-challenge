@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DISCOUNT_TYPES } from "../../types/coupon.js";
 
 // ── Helpers ─────────────────────────────────────────────
 
@@ -12,7 +13,7 @@ const isoDateString = z.string().refine(
 const createCouponBase = z.object({
   siteId: z.string().min(1, "siteId es requerido"),
   code: z.string().min(1, "code es requerido"),
-  discountType: z.enum(["percentage", "fixed"]),
+  discountType: z.enum(DISCOUNT_TYPES),
   discountValue: z.number().positive("discountValue debe ser mayor a 0"),
   minPurchase: z.number().positive("minPurchase debe ser mayor a 0").optional(),
   maxUses: z.number().int().positive("maxUses debe ser entero mayor a 0").optional(),
@@ -44,7 +45,7 @@ const updateCouponBase = z.object({
   siteId: z.string().min(1, "siteId es requerido"),
   couponId: z.string().min(1, "couponId es requerido"),
   code: z.string().min(1, "code no puede ser vacío").optional(),
-  discountType: z.enum(["percentage", "fixed"]).optional(),
+  discountType: z.enum(DISCOUNT_TYPES).optional(),
   discountValue: z.number().positive("discountValue debe ser mayor a 0").optional(),
   minPurchase: z.number().positive("minPurchase debe ser mayor a 0").nullable().optional(),
   maxUses: z.number().int().positive("maxUses debe ser entero mayor a 0").nullable().optional(),

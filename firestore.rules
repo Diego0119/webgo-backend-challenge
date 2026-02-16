@@ -1,5 +1,9 @@
 rules_version = '2';
 
+// ══════════════════════════════════════════════════════════════
+// EMULATOR RULES — Open access for local development/testing.
+// These rules are ONLY used by the Firebase emulators.
+// ══════════════════════════════════════════════════════════════
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
@@ -7,3 +11,54 @@ service cloud.firestore {
     }
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// PRODUCTION RULES (commented) — Defense in depth.
+//
+// In production, Cloud Functions use the Admin SDK which bypasses
+// these rules entirely. However, proper rules act as a safety net
+// against misconfigured clients or direct Firestore access.
+//
+// To activate: replace the emulator rules above with these.
+// ══════════════════════════════════════════════════════════════
+//
+// service cloud.firestore {
+//   match /databases/{database}/documents {
+//
+//     // ── Users ─────────────────────────────────────────
+//     // Users can only read their own document.
+//     match /users/{userId} {
+//       allow read: if request.auth != null && request.auth.uid == userId;
+//       allow write: if false; // Managed by Admin SDK only
+//     }
+//
+//     // ── Sites ─────────────────────────────────────────
+//     // Site owners can read their own sites.
+//     match /sites/{siteId} {
+//       allow read: if request.auth != null
+//                   && resource.data.userId == request.auth.uid;
+//       allow write: if false; // Managed by Admin SDK only
+//     }
+//
+//     // ── Coupons ────────────────────────────────────────
+//     // Coupon access restricted to the site owner.
+//     match /coupons/{couponId} {
+//       allow read: if request.auth != null
+//                   && resource.data.userId == request.auth.uid;
+//       allow write: if false; // All writes go through Cloud Functions
+//     }
+//
+//     // ── Products ───────────────────────────────────────
+//     // Product access restricted to the site owner.
+//     match /products/{productId} {
+//       allow read: if request.auth != null
+//                   && resource.data.userId == request.auth.uid;
+//       allow write: if false; // Managed by Admin SDK only
+//     }
+//
+//     // ── Deny everything else ──────────────────────────
+//     match /{document=**} {
+//       allow read, write: if false;
+//     }
+//   }
+// }

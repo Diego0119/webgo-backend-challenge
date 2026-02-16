@@ -178,7 +178,25 @@ async function seed() {
   });
   console.log(`✅ Coupon: "BIENVENIDO" (coupon001) — 10% off, 0/100 uses, active`);
 
-  // 6. Create a disposable coupon for delete testing (does not affect other tests)
+  // 6. Create a single-use coupon for maxUses testing (RN4 in test-requests.http)
+  await db.collection("coupons").doc("coupon004").set({
+    siteId: SITE_ID,
+    userId: USER_ID,
+    code: "UNUSO",
+    discountType: "fixed",
+    discountValue: 1000,
+    minPurchase: null,
+    maxUses: 1,
+    usedCount: 0,
+    validFrom: "2025-01-01T00:00:00-03:00",
+    validUntil: "2027-12-31T23:59:59-03:00",
+    isActive: true,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+  console.log(`✅ Coupon: "UNUSO" (coupon004) — $1,000 off, 0/1 uses, active (para maxUses test)`);
+
+  // 7. Create a disposable coupon for delete testing (does not affect other tests)
   await db.collection("coupons").doc("coupon003").set({
     siteId: SITE_ID,
     userId: USER_ID,
@@ -226,6 +244,9 @@ async function seed() {
 
   Coupon 3: "BIENVENIDO3" (coupon003) on site1
             5% off, 0/50 uses (para delete test)
+
+  Coupon 4: "UNUSO" (coupon004) on site1
+            $1,000 off, 0/1 uses (para maxUses test)
 
   Valid: 2025-01-01 → 2026-12-31 (Chile, UTC-3)
   ─────────────────────────────────────────────────────

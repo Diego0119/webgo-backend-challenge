@@ -278,27 +278,9 @@ Content-Type: application/json
 }
 
 ### ─────────────────────────────────────────────────
-### RN4. Validación de usos — Paso 1: crear cupón con maxUses: 1
-### ─────────────────────────────────────────────────
-
-POST {{baseUrl}}/createCoupon
-Content-Type: application/json
-
-{
-  "data": {
-    "siteId": "{{siteId}}",
-    "code": "UNICO",
-    "discountType": "fixed",
-    "discountValue": 1000,
-    "maxUses": 1,
-    "validFrom": "2025-01-01T00:00:00-03:00",
-    "validUntil": "2027-12-31T23:59:59-03:00"
-  }
-}
-
-### ─────────────────────────────────────────────────
-### RN4. Validación de usos — Paso 2: aplicar el cupón 
-### (usar couponId del paso 1)
+### RN4. Validación de usos — Paso 1: aplicar coupon004 (UNUSO, maxUses: 1)
+### coupon004 viene del seed con maxUses: 1 y usedCount: 0
+### Esperado: éxito, usedCount: 1
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/applyCoupon
@@ -307,15 +289,15 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "couponId": "<USAR_CUPON_ID_ANTERIOR>",
+    "couponId": "coupon004",
     "orderId": "order-maxuses-001",
     "cartTotal": 50000
   }
 }
 
 ### ─────────────────────────────────────────────────
-### RN4. Validación de usos — Paso 3: validar cupón agotado
-### Esperado: error COUPON_MAX_USES
+### RN4. Validación de usos — Paso 2: validar cupón agotado
+### Esperado: error COUPON_MAX_USES (usedCount 1/1)
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/validateCoupon
@@ -324,7 +306,7 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "code": "UNICO",
+    "code": "UNUSO",
     "cartTotal": 50000
   }
 }
@@ -347,9 +329,7 @@ Content-Type: application/json
 }
 
 ### ─────────────────────────────────────────────────
-### RN6. Estado activo — desactivar cupón y luego validar
-### Paso 1: desactivar el cupón del seed (el couponId debe
-### coincidir don el id del cupón a desactivar)
+### RN6. Estado activo — Paso 1: desactivar cupón BIENVENIDO del seed
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/updateCoupon
@@ -358,17 +338,15 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "couponId": "<USAR_CUPON_ID_A_DESACTIVAR>",
+    "couponId": "coupon001",
     "isActive": false
   }
 }
 
 ### ─────────────────────────────────────────────────
-### RN6. Estado activo — validar cupón desactivado
+### RN6. Estado activo — Paso 2: validar cupón desactivado
 ### Esperado: error COUPON_INACTIVE
 ### (ejecutar después del paso anterior)
-### el "code", debe ser el nombre del cupón desactivado
-### anteriormente
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/validateCoupon
@@ -377,7 +355,7 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "code": "<NOMBRE_DEL_CUPON_DESACTIVADO>",
+    "code": "BIENVENIDO",
     "cartTotal": 50000
   }
 }

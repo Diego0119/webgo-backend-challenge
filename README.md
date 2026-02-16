@@ -1,324 +1,208 @@
-# WebGo Backend Challenge 🚀
+# WebGo Backend Challenge - Sistema de Cupones de Descuento
 
-## Sistema de Cupones de Descuento
+Backend multi-tenant de cupones de descuento para e-commerce, construido con **Firebase Cloud Functions**, **TypeScript** (strict mode, ESM), **Firestore** y **Zod**.
 
-Implementa un **sistema completo de cupones de descuento** para una plataforma e-commerce multi-tenant usando Firebase Cloud Functions.
-
----
-
-## 📋 Requisitos Previos
-
-| Herramienta | Versión | Verificar |
-|-------------|---------|-----------|
-| **Node.js** | 20+ | `node --version` |
-| **Java** | 11+ | `java -version` |
-| **npm** | 10+ | `npm --version` |
-
-> ⚠️ **Java es necesario** para los emuladores de Firebase. Si no lo tienes, descarga [Eclipse Temurin JDK 21](https://adoptium.net/).
+Todo corre localmente sobre emuladores de Firebase, sin necesidad de cuenta real.
 
 ---
 
-## 🚀 Setup Rápido
+## Requisitos
+
+| Herramienta | Version |
+|-------------|---------|
+| Node.js     | 20+     |
+| Java        | 21+     |
+| npm         | 10+     |
+
+Java es necesario para los emuladores de Firebase.
+
+---
+
+## Setup
 
 ```bash
-# 1. Instalar dependencias
-npm install
-
-# 2. Compilar TypeScript
-npm run build
-
-# 3. Iniciar emuladores de Firebase (terminal 1 — queda corriendo)
-npm run dev
-
-# 4. Poblar datos de prueba (terminal 2)
-npm run seed
+npm install          # Instalar dependencias
+npm run build        # Compilar TypeScript
+npm run dev          # Iniciar emuladores (terminal 1)
+npm run seed         # Poblar datos de prueba (terminal 2)
+npm test             # Ejecutar tests unitarios
 ```
 
-Después del seed, visita **http://localhost:4000** para ver la UI del emulador con los datos cargados.
-
-> 💡 Puedes correr `npm run seed` cuantas veces quieras para reiniciar los datos.
+Emulator UI disponible en **http://localhost:4000** tras iniciar los emuladores.
 
 ---
 
-## 📁 Estructura del Proyecto
+## Arquitectura
 
 ```
-├── src/
-│   ├── index.ts                        ← Entry point (configurado)
-│   ├── lib/
-│   │   ├── firebase.ts                 ← Admin SDK init
-│   │   ├── config.ts                   ← Región y constantes
-│   │   └── limits.ts                   ← Helper de límites por plan (dado)
-│   ├── types/
-│   │   ├── common.ts                   ← FunctionResponse<T> (dado)
-│   │   └── coupon.ts                   ← Tipos base + completar request/response
-│   └── functions/
-│       └── coupons/
-│           ├── index.ts                ← Exports de Cloud Functions (configurado)
-│           ├── schemas.ts              ← Implementar schemas Zod
-│           └── handlers.ts             ← Implementar 6 handlers
-├── seed.ts                             ← Script de datos de prueba
-├── test-requests.http                  ← Requests de ejemplo (REST Client)
-├── firebase.json                       ← Config de emuladores
-├── firestore.rules                     ← Reglas de seguridad de Firestore
-└── package.json
+src/
+  index.ts                          # Entry point - re-exporta las 6 Cloud Functions
+  lib/
+    firebase.ts                     # Firebase Admin SDK init
+    config.ts                       # Region (us-central1)
+    limits.ts                       # Helper de limites por plan
+  types/
+    common.ts                       # FunctionResponse<T>
+    coupon.ts                       # Tipos de cupones, request y response
+  functions/
+    coupons/
+      index.ts                      # Registro de las 6 onCall functions
+      schemas.ts                    # Validacion Zod con refine cross-field
+      handlers.ts                   # Logica de los 6 handlers
+tests/
+  schemas.test.ts                   # 36 tests unitarios
+seed.ts                             # Script de datos de prueba (idempotente)
+test-requests.http                  # 35+ requests HTTP para validacion manual
+firestore.rules                     # Reglas abiertas (emulador) + reglas de produccion comentadas
 ```
 
 ---
 
-## 🎯 Funciones a Implementar
+## Funciones implementadas
 
-| # | Función | Descripción |
-|---|---------|-------------|
-| 1 | `createCoupon` | Crear un cupón para una tienda |
-| 2 | `getCoupons` | Listar cupones de una tienda |
-| 3 | `updateCoupon` | Editar un cupón existente |
-| 4 | `deleteCoupon` | Eliminar un cupón |
-| 5 | `validateCoupon` | Validar si un cupón aplica a un carrito |
-| 6 | `applyCoupon` | Aplicar un cupón a una orden |
-
-Cada handler en `handlers.ts` tiene un stub con `return { data: null, error: "Not implemented" }` — reemplázalo con tu implementación.
-
----
-
-## 📐 Estructura del Cupón
-
-```typescript
-interface CouponDocument {
-  id: string;             // ID del documento en Firestore
-  siteId: string;         // Tienda a la que pertenece
-  userId: string;         // Dueño de la tienda
-  code: string;           // Código del cupón (ej: "VERANO20")
-  discountType: "percentage" | "fixed";
-  discountValue: number;  // 20 = 20% o $20 según tipo
-  minPurchase?: number;   // Mínimo de compra para aplicar
-  maxUses?: number;       // Usos totales permitidos (null = ilimitado)
-  usedCount: number;      // Usos actuales
-  validFrom: string;      // Fecha de inicio (ISO 8601)
-  validUntil: string;     // Fecha de fin (ISO 8601)
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-```
-
-Los tipos base (`Coupon`, `CouponDocument`) ya están en `src/types/coupon.ts`. Completa los tipos de request/response para las 6 funciones.
-
----
-
-## 📊 Datos de Prueba (después de `npm run seed`)
-
-| Recurso | ID | Detalle |
-|---------|------|---------|
-| Usuario | `user123` | Plan: `servicio`, email: `test@webgo.cl` |
-| Sitio | `site456` | "Mi Tienda de Prueba" — pertenece a `user123` |
-| Productos | `prod001`–`prod005` | Precios entre $12,990 y $59,990 |
-| Cupón | `coupon001` | `BIENVENIDO` — 10% descuento, activo |
-
-Cupón de ejemplo en Firestore:
-```json
-{
-  "siteId": "site456",
-  "userId": "user123",
-  "code": "BIENVENIDO",
-  "discountType": "percentage",
-  "discountValue": 10,
-  "minPurchase": null,
-  "maxUses": 100,
-  "usedCount": 0,
-  "validFrom": "2025-01-01T00:00:00-03:00",
-  "validUntil": "2026-12-31T23:59:59-03:00",
-  "isActive": true
-}
-```
-
----
-
-## 📝 Reglas de Negocio
-
-1. **Código único por tienda** — "VERANO20" puede existir en Tienda A y B, pero no dos veces en la misma tienda
-2. **Normalización de códigos** — los códigos deben almacenarse y buscarse de forma consistente
-3. **Fechas** — WebGo opera en Chile (UTC-3 / UTC-4). Las fechas de validez deben ser inequívocas
-4. **Validación de usos** — si `maxUses` existe, `usedCount` no puede superarlo
-5. **Mínimo de compra** — si `minPurchase` existe, el carrito debe superar ese monto
-6. **Estado activo** — solo cupones con `isActive: true` pueden validarse/aplicarse
-7. **Porcentaje ≤ 100** — un descuento porcentual no puede superar el 100%
-8. **Rango de fechas** — `validFrom` debe ser anterior a `validUntil`
-9. **Límites por plan** — free: 3 cupones, servicio: 10, tienda: ilimitado
-
----
-
-## 🧪 Cómo Probar
-
-### Opción A: REST Client (Recomendado)
-Instala la extensión [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) en VS Code y abre `test-requests.http`.
-
-### Opción B: curl
-
-```bash
-curl -X POST http://127.0.0.1:5001/demo-webgo-challenge/us-central1/validateCoupon \
-  -H "Content-Type: application/json" \
-  -d '{ "data": { "siteId": "site456", "code": "BIENVENIDO", "cartTotal": 59990 } }'
-```
-
-### Opción C: Postman
-Importa las requests manualmente o usa la URL base `http://127.0.0.1:5001/demo-webgo-challenge/us-central1/{functionName}` con `Content-Type: application/json` y body `{ "data": { ... } }`.
-
-### Opción D: Emulator UI
-http://localhost:4000 → Firestore para inspeccionar documentos.
-
----
-
-## ⚡ Recursos Incluidos
-
-| Archivo | Qué contiene |
+| Funcion | Descripcion |
 |---------|-------------|
-| `src/types/common.ts` | `FunctionResponse<T>` — patrón de respuesta estándar para todas las funciones |
-| `src/lib/limits.ts` | `canCreateCoupon(userId, siteId)` — verifica si el plan permite crear más cupones |
-| `src/functions/coupons/index.ts` | Las 6 Cloud Functions ya registradas con `onCall` |
-| `firestore.rules` | Reglas de seguridad de Firestore |
-| `test-requests.http` | Requests de prueba para las 6 funciones |
+| `createCoupon` | Crea un cupon validando input, existencia del sitio, limites del plan y unicidad del codigo |
+| `getCoupons` | Lista todos los cupones de una tienda |
+| `updateCoupon` | Edita un cupon con validacion cruzada de porcentaje/fechas contra datos existentes |
+| `deleteCoupon` | Elimina un cupon verificando propiedad |
+| `validateCoupon` | Preview del descuento sin modificar el cupon |
+| `applyCoupon` | Aplica el cupon con transaccion atomica para incrementar `usedCount` |
+
+Todas las funciones usan `onCall` con region `us-central1`, 256MiB memory y CORS habilitado.
+
+**Endpoint base:**
+```
+POST http://127.0.0.1:5001/demo-webgo-challenge/us-central1/{functionName}
+Content-Type: application/json
+Body: { "data": { ... } }
+```
 
 ---
 
-## 📝 Criterios de Evaluación
+## Decisiones de diseno
 
-| Categoría | Peso | Qué evaluamos |
-|-----------|------|----------------|
-| **Seguridad** | 25% | Acceso, aislamiento de datos, protección de endpoints |
-| **Funcionalidad** | 35% | Las 6 funciones operan correctamente |
-| **Validación** | 15% | Schemas, edge cases, manejo de datos |
-| **Código** | 15% | Tipos, estructura, legibilidad |
-| **Documentación** | 10% | Decisiones de diseño, instrucciones, requests de prueba |
+### Validacion en dos capas
 
----
-
-## 📦 Entregables
-
-1. **Código fuente** — repositorio GitHub o ZIP
-2. **README** actualizado con:
-   - Tus decisiones y detalles
-3. **Requests de prueba** — para probar las 6 funciones
-
----
-
-## 💡 Tips
-
-- Los emuladores son locales — no necesitas cuenta de Firebase
-- Revisa los archivos en `src/types/` y `src/lib/` antes de empezar
-- El archivo `limits.ts` es un buen ejemplo del estilo de código esperado
-
----
-
-## 🕐 Tiempo
-
-Tienes **24 horas** desde que recibes este repositorio. Evaluamos calidad, no velocidad.
-
----
-
-¡Buena suerte! 🍀
-
----
-
-## Decisiones de Diseño
-
-### Autenticación omitida
-
-Este challenge se ejecuta íntegramente sobre **emuladores locales de Firebase**, por lo que las funciones están configuradas como `invoker: "public"` y **no verifican `request.auth`**. En un entorno de producción se agregaría verificación de autenticación en cada handler, validando el token JWT del usuario mediante `request.auth.uid` y comprobando que tiene permisos sobre el `siteId` solicitado.
-
-### Normalización de códigos
-
-Los códigos de cupón se normalizan a **mayúsculas** (`toUpperCase()`) al crear, actualizar y buscar. Así `"verano2026"` se almacena como `"VERANO2026"` y las búsquedas son case-insensitive sin necesidad de índices adicionales en Firestore.
-
-### Identificación del usuario (userId)
-
-El `userId` del cupón se obtiene del documento del **sitio en Firestore** (`sites/{siteId}.userId`), no del request. Esto garantiza que el cupón siempre quede asociado al dueño real del sitio, independientemente de quién haga la llamada.
+- **Zod schemas:** valida estructura, tipos, rangos (porcentaje <= 100, fechas validas, valores positivos). Incluye `refine` para validaciones cross-field como `validFrom < validUntil`.
+- **Handlers:** valida reglas de negocio que requieren Firestore (codigo unico por sitio, limites de plan, propiedad del cupon, validacion cruzada de porcentaje/fechas en update con datos existentes).
 
 ### Aislamiento multi-tenant
 
-Todas las operaciones de escritura (create, update, delete) verifican:
-1. Que el sitio exista en Firestore
-2. Que el cupón pertenezca al `siteId` indicado (en update/delete)
+Todas las operaciones de escritura verifican que el sitio exista y que el cupon pertenezca al `siteId` indicado. El `userId` se obtiene del documento del sitio en Firestore, no del request. Un sitio no puede leer, modificar ni eliminar cupones de otro sitio.
 
-Un `siteId` inexistente retorna `SITE_NOT_FOUND`. Un cupón que no pertenece al sitio retorna `FORBIDDEN`.
+### Transaccion atomica en applyCoupon
 
-El seed incluye **dos tenants completos** para validar aislamiento:
+`applyCoupon` usa `db.runTransaction()` para leer y actualizar `usedCount` atomicamente, previniendo race conditions donde dos requests simultaneos podrian superar `maxUses`.
 
-| Tenant | User | Site | Plan | Cupón seed |
-|--------|------|------|------|-----------|
-| Tenant 1 | `user123` | `site456` | servicio (max 10) | `BIENVENIDO` — 10% off |
-| Tenant 2 | `user789` | `site999` | free (max 3) | `BIENVENIDO` — $5,000 off |
+### Wrapper de errores centralizado
 
-Ambos tenants tienen el mismo código `BIENVENIDO` pero con descuento distinto (porcentaje vs fijo), lo que demuestra que los códigos son únicos **por sitio** y no globalmente. Los requests MT1–MT13 en `test-requests.http` validan que:
-- Un sitio no puede leer, modificar ni eliminar cupones de otro sitio
-- Los límites de plan se aplican por separado a cada sitio
-- `applyCoupon` con `siteId` cruzado retorna `FORBIDDEN`
+Los 6 handlers estan envueltos con `withErrorHandling`, que centraliza try/catch, logging con `firebase-functions/logger` y respuesta `INTERNAL_ERROR` sin exponer detalles internos.
 
-### Validación en dos capas
+### Normalizacion de codigos
 
-- **Capa 1 (Zod schemas):** valida estructura, tipos de dato, rangos (porcentaje ≤ 100, fechas válidas, valores positivos)
-- **Capa 2 (Handlers):** valida reglas de negocio que requieren consultar Firestore (código único, límites de plan, propiedad del cupón, fechas cruzadas en update)
-
-### Transacción atómica en applyCoupon
-
-`applyCoupon` usa `db.runTransaction()` para leer el cupón y actualizar `usedCount` atómicamente. Esto previene race conditions donde dos requests simultáneos podrían superar `maxUses`.
-
-### Separación validateCoupon / applyCoupon
-
-- `validateCoupon` recibe `cartTotal` y retorna el preview del descuento (`discountAmount`, `finalTotal`)
-- `applyCoupon` también recibe `cartTotal`, valida `minPurchase`, calcula el descuento y retorna `discountAmount` y `finalTotal` junto con el incremento de `usedCount`
-
-Ambas funciones verifican la existencia del sitio antes de proceder. `validateCoupon` sirve como preview; `applyCoupon` confirma la aplicación atómicamente.
+Los codigos se normalizan a mayusculas (`toUpperCase()`) al crear, actualizar y buscar, garantizando busquedas case-insensitive sin indices adicionales.
 
 ### Descuento fijo mayor al carrito
 
-Si un cupón de tipo `fixed` tiene un `discountValue` mayor al `cartTotal`, el descuento se limita al total del carrito (`Math.min(discountValue, cartTotal)`) y `finalTotal` nunca es negativo (`Math.max(finalTotal, 0)`).
+Si un cupon `fixed` tiene un `discountValue` mayor al `cartTotal`, el descuento se limita al total del carrito (`Math.min`) y `finalTotal` nunca es negativo (`Math.max(0)`).
 
-### Productos del seed
+### Firestore Security Rules
 
-Los productos (`prod001`–`prod005`) existen en Firestore pero no se usan en las funciones. Se recibe `cartTotal` directamente ya que el challenge no requiere validación a nivel de producto.
+El archivo `firestore.rules` usa reglas abiertas para los emuladores. Incluye un bloque comentado con **reglas de produccion** que restringen acceso por usuario autenticado y delegan escritura exclusivamente a Cloud Functions (Admin SDK).
 
-### Tests unitarios
+### Autenticacion omitida
 
-Se incluyen **36 tests unitarios** para los 6 schemas Zod usando el test runner nativo de Node.js (`node:test`), sin dependencias adicionales:
+Las funciones estan como `invoker: "public"` ya que el challenge corre sobre emuladores locales. En produccion se agregaria verificacion de `request.auth` con token JWT.
+
+---
+
+## Reglas de negocio
+
+1. **Codigo unico por sitio** -- el mismo codigo puede existir en distintas tiendas
+2. **Porcentaje <= 100** -- validado en schema y handler (cross-field en update)
+3. **`validFrom` < `validUntil`** -- validado en ambas capas
+4. **`maxUses`** -- `usedCount` no puede superar `maxUses` (verificado atomicamente)
+5. **`minPurchase`** -- el carrito debe cumplir el monto minimo
+6. **Solo cupones activos** (`isActive: true`) pueden validarse o aplicarse
+7. **Limites por plan** -- free: 3 cupones, servicio: 10, tienda: ilimitado
+
+---
+
+## Tests unitarios
+
+**36 tests** para los 6 schemas Zod usando el test runner nativo de Node.js (`node:test`), sin dependencias adicionales:
 
 ```bash
 npm test   # Ejecuta tests/schemas.test.ts
 ```
 
-Los tests cubren:
-- Inputs válidos (happy path) para cada schema
-- Rechazo de campos vacíos, negativos y ausentes
+Cobertura:
+- Happy path para cada schema
+- Rechazo de campos vacios, negativos, ausentes
 - Porcentaje > 100 rechazado en create y update
 - `validFrom >= validUntil` rechazado
 - `maxUses` no entero rechazado
 - `cartTotal` negativo rechazado
 - Campos opcionales (`minPurchase`, `maxUses`) aceptados como `null`
-- Validación parcial en update (solo campos enviados, el handler completa con datos existentes)
+- Validacion parcial en update (solo campos enviados)
 
-Esto complementa los **35+ requests HTTP** en `test-requests.http` que validan la lógica completa con Firestore.
+---
 
-### Requests de prueba
+## Seed mejorado
 
-Además de los requests originales para las 6 funciones, se agregaron casos edge en `test-requests.http` para validar reglas de negocio: código duplicado (RN1), normalización case-insensitive (RN2), fechas invertidas (RN3), agotamiento de `maxUses` (RN4), monto mínimo no cumplido (RN5), cupón desactivado (RN6), validación cruzada de fechas en update (RN8), acceso con sitio inexistente, aislamiento de datos y validación de campos vacíos/negativos.
+El script `seed.ts` fue extendido para soportar tests de aislamiento multi-tenant y edge cases:
 
-### Logging de errores
+| Recurso | ID | Detalle |
+|---------|-----|---------|
+| User 1 | `user123` | plan: servicio (max 10 cupones) |
+| Site 1 | `site456` | "Mi Tienda de Prueba" -- owner: user123 |
+| User 2 | `user789` | plan: free (max 3 cupones) |
+| Site 2 | `site999` | "Tienda Rival" -- owner: user789 |
+| Cupon 1 | `coupon001` | `BIENVENIDO` en site1 -- 10% off, 0/100 usos |
+| Cupon 2 | `coupon002` | `BIENVENIDO` en site2 -- $5,000 off, 0/10 usos |
+| Cupon 3 | `coupon003` | `BIENVENIDO3` en site1 -- para test de delete |
+| Cupon 4 | `coupon004` | `UNUSO` en site1 -- $1,000 off, 0/1 usos (test maxUses) |
+| Productos | `prod001-prod005` | $12,990 - $59,990 |
 
-Todos los handlers loguean errores internos con `firebase-functions/logger` antes de retornar `INTERNAL_ERROR`. Esto facilita el debugging en producción sin exponer detalles internos al cliente.
+El seed es idempotente: limpia datos existentes antes de insertar. Los dos tenants comparten el codigo `BIENVENIDO` con distinto descuento, demostrando que la unicidad es por sitio.
 
-### Estilo de código
+---
 
-El código sigue el estilo de `limits.ts` (indicado como referencia en el challenge):
-- Funciones exportadas como `export async function name()` (named function declarations)
-- JSDoc multi-línea descriptivo en cada función pública
-- Tipos explícitos en parámetros y retornos, cero `any` en todo el proyecto
-- Helpers internos tipados y con nombres autoexplicativos
+## Requests de prueba
 
-### Documentación del código
+El archivo `test-requests.http` (VS Code REST Client) contiene **35+ requests** organizados por categoria:
 
-El código fuente está comentado en los puntos clave:
-- Cada handler documenta los pasos de validación y lógica de negocio
-- Los schemas Zod incluyen mensajes de error descriptivos en español
-- Los helpers (`formatZodError`, `getSiteUserId`, `calculateDiscount`) están tipados y son autoexplicativos
-- Los `errorCode` siguen una convención consistente (`INVALID_INPUT`, `SITE_NOT_FOUND`, `COUPON_NOT_FOUND`, `FORBIDDEN`, `DUPLICATE_CODE`, `COUPON_LIMIT_REACHED`, `COUPON_INACTIVE`, `COUPON_EXPIRED`, `COUPON_NOT_YET_VALID`, `COUPON_MAX_USES`, `MIN_PURCHASE_NOT_MET`, `INTERNAL_ERROR`)
+- **CRUD basico:** crear, listar, actualizar y eliminar cupones
+- **Reglas de negocio (RN1-RN8):** codigo duplicado, normalizacion case-insensitive, fechas invertidas, agotamiento de maxUses, monto minimo, cupon desactivado, validacion cruzada de fechas en update
+- **Multi-tenant (MT1-MT13):** aislamiento entre sitios, limites de plan por separado, acceso cruzado denegado
+- **Edge cases:** sitio inexistente, campos vacios, valores negativos
 
+---
+
+## Patron de respuesta
+
+Todas las funciones retornan:
+
+```json
+{
+  "result": {
+    "data": "...",
+    "error": null,
+    "errorCode": "COUPON_NOT_FOUND"
+  }
+}
+```
+
+El wrapper `result` lo agrega Firebase por usar `onCall`. Los `errorCode` posibles son: `INVALID_INPUT`, `SITE_NOT_FOUND`, `COUPON_NOT_FOUND`, `FORBIDDEN`, `DUPLICATE_CODE`, `COUPON_LIMIT_REACHED`, `COUPON_INACTIVE`, `COUPON_EXPIRED`, `COUPON_NOT_YET_VALID`, `COUPON_MAX_USES`, `MIN_PURCHASE_NOT_MET`, `INTERNAL_ERROR`.
+
+---
+
+## Stack
+
+- **Runtime:** Node.js 20+ con TypeScript strict mode (ESM)
+- **Cloud Functions:** Firebase Functions v2 (`onCall`)
+- **Base de datos:** Firestore (emulador local)
+- **Validacion:** Zod con `refine` para validaciones cross-field
+- **Tests:** `node:test` nativo (zero dependencies)
+- **Logging:** `firebase-functions/logger`

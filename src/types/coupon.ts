@@ -1,6 +1,7 @@
 import type { FunctionResponse } from "./common.js";
 
-export type DiscountType = "percentage" | "fixed";
+export const DISCOUNT_TYPES = ["percentage", "fixed"] as const;
+export type DiscountType = (typeof DISCOUNT_TYPES)[number];
 
 export interface Coupon {
   code: string;
