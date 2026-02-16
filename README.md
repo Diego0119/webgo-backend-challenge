@@ -242,6 +242,18 @@ Todas las operaciones de escritura (create, update, delete) verifican:
 
 Un `siteId` inexistente retorna `SITE_NOT_FOUND`. Un cupón que no pertenece al sitio retorna `FORBIDDEN`.
 
+El seed incluye **dos tenants completos** para validar aislamiento:
+
+| Tenant | User | Site | Plan | Cupón seed |
+|--------|------|------|------|-----------|
+| Tenant 1 | `user123` | `site456` | servicio (max 10) | `BIENVENIDO` — 10% off |
+| Tenant 2 | `user789` | `site999` | free (max 3) | `BIENVENIDO` — $5,000 off |
+
+Ambos tenants tienen el mismo código `BIENVENIDO` pero con descuento distinto (porcentaje vs fijo), lo que demuestra que los códigos son únicos **por sitio** y no globalmente. Los requests MT1–MT13 en `test-requests.http` validan que:
+- Un sitio no puede leer, modificar ni eliminar cupones de otro sitio
+- Los límites de plan se aplican por separado a cada sitio
+- `applyCoupon` con `siteId` cruzado retorna `FORBIDDEN`
+
 ### Validación en dos capas
 
 - **Capa 1 (Zod schemas):** valida estructura, tipos de dato, rangos (porcentaje ≤ 100, fechas válidas, valores positivos)
@@ -266,9 +278,41 @@ Si un cupón de tipo `fixed` tiene un `discountValue` mayor al `cartTotal`, el d
 
 Los productos (`prod001`–`prod005`) existen en Firestore pero no se usan en las funciones. Se recibe `cartTotal` directamente ya que el challenge no requiere validación a nivel de producto.
 
+### Tests unitarios
+
+Se incluyen **36 tests unitarios** para los 6 schemas Zod usando el test runner nativo de Node.js (`node:test`), sin dependencias adicionales:
+
+```bash
+npm test   # Ejecuta tests/schemas.test.ts
+```
+
+Los tests cubren:
+- Inputs válidos (happy path) para cada schema
+- Rechazo de campos vacíos, negativos y ausentes
+- Porcentaje > 100 rechazado en create y update
+- `validFrom >= validUntil` rechazado
+- `maxUses` no entero rechazado
+- `cartTotal` negativo rechazado
+- Campos opcionales (`minPurchase`, `maxUses`) aceptados como `null`
+- Validación parcial en update (solo campos enviados, el handler completa con datos existentes)
+
+Esto complementa los **35+ requests HTTP** en `test-requests.http` que validan la lógica completa con Firestore.
+
 ### Requests de prueba
 
 Además de los requests originales para las 6 funciones, se agregaron casos edge en `test-requests.http` para validar reglas de negocio: código duplicado (RN1), normalización case-insensitive (RN2), fechas invertidas (RN3), agotamiento de `maxUses` (RN4), monto mínimo no cumplido (RN5), cupón desactivado (RN6), validación cruzada de fechas en update (RN8), acceso con sitio inexistente, aislamiento de datos y validación de campos vacíos/negativos.
+
+### Logging de errores
+
+Todos los handlers loguean errores internos con `firebase-functions/logger` antes de retornar `INTERNAL_ERROR`. Esto facilita el debugging en producción sin exponer detalles internos al cliente.
+
+### Estilo de código
+
+El código sigue el estilo de `limits.ts` (indicado como referencia en el challenge):
+- Funciones exportadas como `export async function name()` (named function declarations)
+- JSDoc multi-línea descriptivo en cada función pública
+- Tipos explícitos en parámetros y retornos, cero `any` en todo el proyecto
+- Helpers internos tipados y con nombres autoexplicativos
 
 ### Documentación del código
 
