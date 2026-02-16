@@ -14,6 +14,8 @@
 @baseUrl = http://127.0.0.1:5001/demo-webgo-challenge/us-central1
 @siteId = site456
 @userId = user123
+@siteId2 = site999
+@userId2 = user789
 
 
 ### ─────────────────────────────────────────────────
@@ -142,12 +144,14 @@ Content-Type: application/json
   "data": {
     "siteId": "{{siteId}}",
     "couponId": "coupon001",
-    "orderId": "order-test-001"
+    "orderId": "order-test-001",
+    "cartTotal": 59990
   }
 }
 
 ### ─────────────────────────────────────────────────
 ### 9. Eliminar cupón (deleteCoupon)
+### Usa coupon003 (BIENVENIDO3) para no afectar otros tests
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/deleteCoupon
@@ -156,7 +160,7 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "couponId": "coupon001"
+    "couponId": "coupon003"
   }
 }
 
@@ -240,7 +244,7 @@ Content-Type: application/json
 
 ### ─────────────────────────────────────────────────
 ### RN2. Normalización — buscar con distinta capitalización
-### Esperado: encuentra el cupón "BIENVENIDO" del seed
+### Esperado: encuentra el cupón "VERANO2026" del seed
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/validateCoupon
@@ -249,7 +253,7 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "code": "bienvenido",
+    "code": "verano2026",
     "cartTotal": 50000
   }
 }
@@ -293,7 +297,8 @@ Content-Type: application/json
 }
 
 ### ─────────────────────────────────────────────────
-### RN4. Validación de usos — Paso 2: aplicar el cupón (usar couponId del paso 1)
+### RN4. Validación de usos — Paso 2: aplicar el cupón 
+### (usar couponId del paso 1)
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/applyCoupon
@@ -302,8 +307,9 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "couponId": "jsmOlAHiA7a3EN4SzSoa",
-    "orderId": "order-maxuses-001"
+    "couponId": "<USAR_CUPON_ID_ANTERIOR>",
+    "orderId": "order-maxuses-001",
+    "cartTotal": 50000
   }
 }
 
@@ -342,7 +348,8 @@ Content-Type: application/json
 
 ### ─────────────────────────────────────────────────
 ### RN6. Estado activo — desactivar cupón y luego validar
-### Paso 1: desactivar el cupón del seed
+### Paso 1: desactivar el cupón del seed (el couponId debe
+### coincidir don el id del cupón a desactivar)
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/updateCoupon
@@ -351,7 +358,7 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "couponId": "coupon001",
+    "couponId": "<USAR_CUPON_ID_A_DESACTIVAR>",
     "isActive": false
   }
 }
@@ -360,6 +367,8 @@ Content-Type: application/json
 ### RN6. Estado activo — validar cupón desactivado
 ### Esperado: error COUPON_INACTIVE
 ### (ejecutar después del paso anterior)
+### el "code", debe ser el nombre del cupón desactivado
+### anteriormente
 ### ─────────────────────────────────────────────────
 
 POST {{baseUrl}}/validateCoupon
@@ -368,7 +377,7 @@ Content-Type: application/json
 {
   "data": {
     "siteId": "{{siteId}}",
-    "code": "BIENVENIDO",
+    "code": "<NOMBRE_DEL_CUPON_DESACTIVADO>",
     "cartTotal": 50000
   }
 }
@@ -458,5 +467,232 @@ Content-Type: application/json
     "discountValue": -500,
     "validFrom": "2026-01-01T00:00:00-03:00",
     "validUntil": "2026-12-31T23:59:59-03:00"
+  }
+}
+
+### ══════════════════════════════════════════════════
+### Aislamiento Multi-Tenant (site999 — user789, plan free)
+### ══════════════════════════════════════════════════
+
+### ─────────────────────────────────────────────────
+### MT1. Listar cupones de site2
+### Esperado: solo coupon002 (BIENVENIDO $5,000 fixed)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/getCoupons
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT2. Mismo código "BIENVENIDO" en site2 — debe ser distinto al de site1
+### Esperado: valid: true, discountType: "fixed", discountAmount: 5000
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/validateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "code": "BIENVENIDO",
+    "cartTotal": 50000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT3. Aplicar cupón de site2 con cartTotal
+### Esperado: discountAmount: 5000, finalTotal: 45000, usedCount: 1
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/applyCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "couponId": "coupon002",
+    "orderId": "order-site2-001",
+    "cartTotal": 50000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT4. Aplicar cupón de site2 pero enviando siteId de site1
+### Esperado: error FORBIDDEN (el cupón no pertenece a site456)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/applyCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "couponId": "coupon002",
+    "orderId": "order-cross-001",
+    "cartTotal": 50000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT5. Actualizar cupón de site1 usando siteId de site2
+### Esperado: error FORBIDDEN
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/updateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "couponId": "coupon001",
+    "discountValue": 99
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT6. Eliminar cupón de site1 usando siteId de site2
+### Esperado: error FORBIDDEN
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/deleteCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "couponId": "coupon001"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT7. minPurchase en applyCoupon — coupon002 requiere $20,000
+### Esperado: error MIN_PURCHASE_NOT_MET
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/applyCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "couponId": "coupon002",
+    "orderId": "order-minpurchase-001",
+    "cartTotal": 10000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT8. Crear cupón en site2 (1 de 3 permitidos en plan free)
+### Esperado: éxito
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/createCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "code": "FREECUPON1",
+    "discountType": "percentage",
+    "discountValue": 5,
+    "validFrom": "2026-01-01T00:00:00-03:00",
+    "validUntil": "2026-12-31T23:59:59-03:00"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT9. Crear segundo cupón en site2 (2 de 3)
+### Esperado: éxito
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/createCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "code": "FREECUPON2",
+    "discountType": "fixed",
+    "discountValue": 2000,
+    "validFrom": "2026-01-01T00:00:00-03:00",
+    "validUntil": "2026-12-31T23:59:59-03:00"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT10. Crear tercer cupón en site2 — EXCEDE límite plan free (3/3)
+### Esperado: error COUPON_LIMIT_REACHED
+### (coupon002 del seed + MT8 + MT9 = 3 cupones, ya al límite)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/createCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "code": "FREECUPON3",
+    "discountType": "percentage",
+    "discountValue": 10,
+    "validFrom": "2026-01-01T00:00:00-03:00",
+    "validUntil": "2026-12-31T23:59:59-03:00"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT11. Descuento fijo mayor al carrito — cap al total
+### Esperado: discountAmount: 5000 (capped a cartTotal no aplica aquí,
+### pero finalTotal: 0 porque Math.max(25000 - 5000, 0) = 20000)
+### Usamos cartTotal que cumple minPurchase ($20,000) de coupon002
+### Para probar cap real, usamos FREECUPON2 ($2,000 fijo, sin minPurchase)
+### con un cart de $1,000 → discountAmount: 1000, finalTotal: 0
+### (ejecutar después de MT9 para que FREECUPON2 exista)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/validateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "code": "FREECUPON2",
+    "cartTotal": 1000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT12. validateCoupon en site2 con sitio inexistente
+### Esperado: error SITE_NOT_FOUND
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/validateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "sitio-fantasma",
+    "code": "BIENVENIDO",
+    "cartTotal": 50000
+  }
+}
+
+### ─────────────────────────────────────────────────
+### MT13. applyCoupon sin cartTotal
+### Esperado: error INVALID_INPUT (cartTotal: Required)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/applyCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId2}}",
+    "couponId": "coupon002",
+    "orderId": "order-nocart-001"
   }
 }

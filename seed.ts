@@ -28,6 +28,10 @@ const USER_ID = "user123";
 const USER_EMAIL = "test@webgo.cl";
 const SITE_ID = "site456";
 
+const USER2_ID = "user789";
+const USER2_EMAIL = "rival@webgo.cl";
+const SITE2_ID = "site999";
+
 const PRODUCTS = [
   { id: "prod001", name: "Camiseta Básica", price: 15000, stock: 100 },
   { id: "prod002", name: "Jeans Slim Fit", price: 29990, stock: 50 },
@@ -67,8 +71,9 @@ async function seed() {
       displayName: "Usuario de Prueba",
     });
     console.log(`✅ Auth user created: ${USER_ID} (${USER_EMAIL})`);
-  } catch (err: any) {
-    console.log(`⚠️  Auth user creation skipped: ${err.message ?? "unknown"}. Continuing...`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "unknown";
+    console.log(`⚠️  Auth user creation skipped: ${message}. Continuing...`);
   }
 
   // 2. Create user document with plan
@@ -88,6 +93,56 @@ async function seed() {
     createdAt: Timestamp.now(),
   });
   console.log(`✅ Site: sites/${SITE_ID} (owner: ${USER_ID})`);
+
+  // 3b. Create second user + site (for multi-tenant isolation tests)
+  try {
+    try { await auth.deleteUser(USER2_ID); } catch { /* didn't exist */ }
+
+    await auth.createUser({
+      uid: USER2_ID,
+      email: USER2_EMAIL,
+      password: "test1234",
+      displayName: "Usuario Rival",
+    });
+    console.log(`✅ Auth user created: ${USER2_ID} (${USER2_EMAIL})`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "unknown";
+    console.log(`⚠️  Auth user 2 creation skipped: ${message}. Continuing...`);
+  }
+
+  await db.doc(`users/${USER2_ID}`).set({
+    email: USER2_EMAIL,
+    displayName: "Usuario Rival",
+    plan: "free", // Limit: 3 coupons
+    createdAt: Timestamp.now(),
+  });
+  console.log(`✅ User: users/${USER2_ID} (plan: free → max 3 cupones)`);
+
+  await db.doc(`sites/${SITE2_ID}`).set({
+    userId: USER2_ID,
+    name: "Tienda Rival",
+    subdomain: "tienda-rival",
+    createdAt: Timestamp.now(),
+  });
+  console.log(`✅ Site: sites/${SITE2_ID} (owner: ${USER2_ID})`);
+
+  // Coupon with same code "BIENVENIDO" but on site2 (valid — unique per site, not global)
+  await db.collection("coupons").doc("coupon002").set({
+    siteId: SITE2_ID,
+    userId: USER2_ID,
+    code: "BIENVENIDO",
+    discountType: "fixed",
+    discountValue: 5000,
+    minPurchase: 20000,
+    maxUses: 10,
+    usedCount: 0,
+    validFrom: "2025-01-01T00:00:00-03:00",
+    validUntil: "2026-12-31T23:59:59-03:00",
+    isActive: true,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+  console.log(`✅ Coupon: "BIENVENIDO" (coupon002) on site2 — $5,000 off, 0/10 uses`);
 
   // 4. Create products (top-level collection)
   for (const product of PRODUCTS) {
@@ -123,6 +178,24 @@ async function seed() {
   });
   console.log(`✅ Coupon: "BIENVENIDO" (coupon001) — 10% off, 0/100 uses, active`);
 
+  // 6. Create a disposable coupon for delete testing (does not affect other tests)
+  await db.collection("coupons").doc("coupon003").set({
+    siteId: SITE_ID,
+    userId: USER_ID,
+    code: "BIENVENIDO3",
+    discountType: "percentage",
+    discountValue: 5,
+    minPurchase: null,
+    maxUses: 50,
+    usedCount: 0,
+    validFrom: "2025-01-01T00:00:00-03:00",
+    validUntil: "2026-12-31T23:59:59-03:00",
+    isActive: true,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+  console.log(`✅ Coupon: "BIENVENIDO3" (coupon003) — 5% off, 0/50 uses, active (para delete test)`);
+
   // Summary
   console.log("\n" + "═".repeat(55));
   console.log("  SEED COMPLETE — Test data is ready!");
@@ -130,18 +203,31 @@ async function seed() {
   console.log(`
   📦 Data Summary:
   ─────────────────────────────────────────────────────
-  User:     ${USER_ID} (${USER_EMAIL})
+  User 1:   ${USER_ID} (${USER_EMAIL})
             plan: "servicio" → max 10 coupons
 
-  Site:     ${SITE_ID} — "Mi Tienda de Prueba"
+  Site 1:   ${SITE_ID} — "Mi Tienda de Prueba"
             owner: ${USER_ID}
+
+  User 2:   ${USER2_ID} (${USER2_EMAIL})
+            plan: "free" → max 3 coupons
+
+  Site 2:   ${SITE2_ID} — "Tienda Rival"
+            owner: ${USER2_ID}
 
   Products: ${PRODUCTS.length} products (prod001–prod005)
             Prices: $12,990 – $59,990
 
-  Coupon:   "BIENVENIDO" (coupon001)
+  Coupon 1: "BIENVENIDO" (coupon001) on site1
             10% off, active, 0/100 uses
-            Valid: 2025-01-01 → 2026-12-31 (Chile, UTC-3)
+
+  Coupon 2: "BIENVENIDO" (coupon002) on site2
+            $5,000 off, minPurchase $20,000, 0/10 uses
+
+  Coupon 3: "BIENVENIDO3" (coupon003) on site1
+            5% off, 0/50 uses (para delete test)
+
+  Valid: 2025-01-01 → 2026-12-31 (Chile, UTC-3)
   ─────────────────────────────────────────────────────
 
   🔗 Emulator UI: http://localhost:4000

@@ -222,6 +222,10 @@ Tienes **24 horas** desde que recibes este repositorio. Evaluamos calidad, no ve
 
 ## Decisiones de Diseño
 
+### Autenticación omitida
+
+Este challenge se ejecuta íntegramente sobre **emuladores locales de Firebase**, por lo que las funciones están configuradas como `invoker: "public"` y **no verifican `request.auth`**. En un entorno de producción se agregaría verificación de autenticación en cada handler, validando el token JWT del usuario mediante `request.auth.uid` y comprobando que tiene permisos sobre el `siteId` solicitado.
+
 ### Normalización de códigos
 
 Los códigos de cupón se normalizan a **mayúsculas** (`toUpperCase()`) al crear, actualizar y buscar. Así `"verano2026"` se almacena como `"VERANO2026"` y las búsquedas son case-insensitive sin necesidad de índices adicionales en Firestore.
@@ -250,9 +254,9 @@ Un `siteId` inexistente retorna `SITE_NOT_FOUND`. Un cupón que no pertenece al 
 ### Separación validateCoupon / applyCoupon
 
 - `validateCoupon` recibe `cartTotal` y retorna el preview del descuento (`discountAmount`, `finalTotal`)
-- `applyCoupon` solo confirma la aplicación e incrementa `usedCount`, sin recalcular el descuento
+- `applyCoupon` también recibe `cartTotal`, valida `minPurchase`, calcula el descuento y retorna `discountAmount` y `finalTotal` junto con el incremento de `usedCount`
 
-Esto sigue el flujo natural: primero el cliente valida, luego aplica.
+Ambas funciones verifican la existencia del sitio antes de proceder. `validateCoupon` sirve como preview; `applyCoupon` confirma la aplicación atómicamente.
 
 ### Descuento fijo mayor al carrito
 

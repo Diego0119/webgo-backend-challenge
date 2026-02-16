@@ -1,4 +1,5 @@
 import type { CallableRequest } from "firebase-functions/v2/https";
+import { logger } from "firebase-functions";
 import type { ZodError } from "zod";
 
 import { db } from "../../lib/firebase.js";
@@ -36,6 +37,14 @@ async function getSiteUserId(siteId: string): Promise<string | null> {
   return (siteDoc.data()?.userId as string) ?? null;
 }
 
+function toCouponDocument(doc: FirebaseFirestore.DocumentSnapshot): CouponDocument {
+  const data = doc.data();
+  if (!data) {
+    throw new Error(`Document ${doc.id} has no data`);
+  }
+  return { id: doc.id, ...data } as CouponDocument;
+}
+
 function calculateDiscount(
   discountType: "percentage" | "fixed",
   discountValue: number,
@@ -49,10 +58,13 @@ function calculateDiscount(
 
 // ── 1. createCoupon ─────────────────────────────────────
 
-/** Crear un nuevo cupón para una tienda. */
-export const createCouponHandler = async (
+/**
+ * Crea un nuevo cupón para una tienda.
+ * Valida input, existencia del sitio, límites del plan y unicidad del código.
+ */
+export async function createCouponHandler(
   request: CallableRequest<unknown>,
-): Promise<CreateCouponResponse> => {
+): Promise<CreateCouponResponse> {
   try {
     const parsed = createCouponSchema.safeParse(request.data);
     if (!parsed.success) {
@@ -115,17 +127,21 @@ export const createCouponHandler = async (
     const docRef = await couponsCollection.add(couponData);
 
     return { data: { id: docRef.id, ...couponData } as CouponDocument, error: null };
-  } catch {
+  } catch (err) {
+    logger.error("createCoupon failed", err);
     return { data: null, error: "Error interno del servidor", errorCode: "INTERNAL_ERROR" };
   }
-};
+}
 
 // ── 2. getCoupons ───────────────────────────────────────
 
-/** Listar todos los cupones de una tienda. */
-export const getCouponsHandler = async (
+/**
+ * Lista todos los cupones de una tienda.
+ * Verifica que el sitio exista antes de consultar.
+ */
+export async function getCouponsHandler(
   request: CallableRequest<unknown>,
-): Promise<GetCouponsResponse> => {
+): Promise<GetCouponsResponse> {
   try {
     const parsed = getCouponsSchema.safeParse(request.data);
     if (!parsed.success) {
@@ -142,23 +158,25 @@ export const getCouponsHandler = async (
 
     const snapshot = await couponsCollection.where("siteId", "==", siteId).get();
 
-    const coupons: CouponDocument[] = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as CouponDocument[];
+    const coupons: CouponDocument[] = snapshot.docs.map((doc) => toCouponDocument(doc));
 
     return { data: coupons, error: null };
-  } catch {
+  } catch (err) {
+    logger.error("getCoupons failed", err);
     return { data: null, error: "Error interno del servidor", errorCode: "INTERNAL_ERROR" };
   }
-};
+}
 
 // ── 3. updateCoupon ─────────────────────────────────────
 
-/** Editar un cupón existente. */
-export const updateCouponHandler = async (
+/**
+ * Edita un cupón existente.
+ * Valida propiedad del cupón, unicidad de código y validación cruzada
+ * de porcentaje/fechas con los datos actuales en Firestore.
+ */
+export async function updateCouponHandler(
   request: CallableRequest<unknown>,
-): Promise<UpdateCouponResponse> => {
+): Promise<UpdateCouponResponse> {
   try {
     const parsed = updateCouponSchema.safeParse(request.data);
     if (!parsed.success) {
@@ -181,7 +199,7 @@ export const updateCouponHandler = async (
       return { data: null, error: "Cupón no encontrado", errorCode: "COUPON_NOT_FOUND" };
     }
 
-    const currentData = couponDoc.data() as Omit<CouponDocument, "id">;
+    const currentData = toCouponDocument(couponDoc);
 
     if (currentData.siteId !== siteId) {
       return { data: null, error: "El cupón no pertenece a esta tienda", errorCode: "FORBIDDEN" };
@@ -242,20 +260,24 @@ export const updateCouponHandler = async (
     await couponRef.update(cleanUpdates);
 
     const updatedDoc = await couponRef.get();
-    const updatedData = { id: updatedDoc.id, ...updatedDoc.data() } as CouponDocument;
+    const updatedData = toCouponDocument(updatedDoc);
 
     return { data: updatedData, error: null };
-  } catch {
+  } catch (err) {
+    logger.error("updateCoupon failed", err);
     return { data: null, error: "Error interno del servidor", errorCode: "INTERNAL_ERROR" };
   }
-};
+}
 
 // ── 4. deleteCoupon ─────────────────────────────────────
 
-/** Eliminar un cupón. */
-export const deleteCouponHandler = async (
+/**
+ * Elimina un cupón.
+ * Verifica existencia del sitio y propiedad del cupón antes de borrar.
+ */
+export async function deleteCouponHandler(
   request: CallableRequest<unknown>,
-): Promise<DeleteCouponResponse> => {
+): Promise<DeleteCouponResponse> {
   try {
     const parsed = deleteCouponSchema.safeParse(request.data);
     if (!parsed.success) {
@@ -286,17 +308,22 @@ export const deleteCouponHandler = async (
     await couponRef.delete();
 
     return { data: { id: couponId }, error: null };
-  } catch {
+  } catch (err) {
+    logger.error("deleteCoupon failed", err);
     return { data: null, error: "Error interno del servidor", errorCode: "INTERNAL_ERROR" };
   }
-};
+}
 
 // ── 5. validateCoupon ───────────────────────────────────
 
-/** Validar si un cupón puede aplicarse a un carrito. */
-export const validateCouponHandler = async (
+/**
+ * Valida si un cupón puede aplicarse a un carrito.
+ * Verifica estado activo, fechas, usos disponibles y monto mínimo.
+ * Retorna preview del descuento sin modificar el cupón.
+ */
+export async function validateCouponHandler(
   request: CallableRequest<unknown>,
-): Promise<ValidateCouponResponse> => {
+): Promise<ValidateCouponResponse> {
   try {
     const parsed = validateCouponSchema.safeParse(request.data);
     if (!parsed.success) {
@@ -304,6 +331,12 @@ export const validateCouponHandler = async (
     }
 
     const { siteId, code, cartTotal } = parsed.data;
+
+    // Verificar que el sitio existe
+    const siteUserId = await getSiteUserId(siteId);
+    if (!siteUserId) {
+      return { data: null, error: "Sitio no encontrado", errorCode: "SITE_NOT_FOUND" };
+    }
 
     // Buscar cupón por código normalizado y siteId
     const normalizedCode = code.toUpperCase();
@@ -318,7 +351,7 @@ export const validateCouponHandler = async (
     }
 
     const couponDoc = snapshot.docs[0];
-    const coupon = { id: couponDoc.id, ...couponDoc.data() } as CouponDocument;
+    const coupon = toCouponDocument(couponDoc);
 
     // Verificar estado activo
     if (!coupon.isActive) {
@@ -364,24 +397,35 @@ export const validateCouponHandler = async (
       },
       error: null,
     };
-  } catch {
+  } catch (err) {
+    logger.error("validateCoupon failed", err);
     return { data: null, error: "Error interno del servidor", errorCode: "INTERNAL_ERROR" };
   }
-};
+}
 
 // ── 6. applyCoupon ──────────────────────────────────────
 
-/** Aplicar un cupón a una orden. */
-export const applyCouponHandler = async (
+/**
+ * Aplica un cupón a una orden.
+ * Usa transacción atómica para incrementar usedCount y prevenir race conditions.
+ * Verifica todas las reglas de negocio dentro de la transacción.
+ */
+export async function applyCouponHandler(
   request: CallableRequest<unknown>,
-): Promise<ApplyCouponResponse> => {
+): Promise<ApplyCouponResponse> {
   try {
     const parsed = applyCouponSchema.safeParse(request.data);
     if (!parsed.success) {
       return { data: null, error: formatZodError(parsed.error), errorCode: "INVALID_INPUT" };
     }
 
-    const { siteId, couponId, orderId } = parsed.data;
+    const { siteId, couponId, orderId, cartTotal } = parsed.data;
+
+    // Verificar que el sitio existe
+    const siteUserId = await getSiteUserId(siteId);
+    if (!siteUserId) {
+      return { data: null, error: "Sitio no encontrado", errorCode: "SITE_NOT_FOUND" };
+    }
 
     // Usar transacción para garantizar atomicidad al incrementar usedCount
     const result = await db.runTransaction(async (transaction) => {
@@ -392,7 +436,7 @@ export const applyCouponHandler = async (
         return { data: null, error: "Cupón no encontrado", errorCode: "COUPON_NOT_FOUND" } as ApplyCouponResponse;
       }
 
-      const coupon = { id: couponDoc.id, ...couponDoc.data() } as CouponDocument;
+      const coupon = toCouponDocument(couponDoc);
 
       // Verificar que pertenece al sitio
       if (coupon.siteId !== siteId) {
@@ -418,6 +462,19 @@ export const applyCouponHandler = async (
         return { data: null, error: "El cupón ha alcanzado el límite de usos", errorCode: "COUPON_MAX_USES" } as ApplyCouponResponse;
       }
 
+      // Verificar monto mínimo de compra
+      if (coupon.minPurchase !== null && coupon.minPurchase !== undefined && cartTotal < coupon.minPurchase) {
+        return {
+          data: null,
+          error: `El monto mínimo de compra es $${coupon.minPurchase}`,
+          errorCode: "MIN_PURCHASE_NOT_MET",
+        } as ApplyCouponResponse;
+      }
+
+      // Calcular descuento
+      const discountAmount = calculateDiscount(coupon.discountType, coupon.discountValue, cartTotal);
+      const finalTotal = Math.max(cartTotal - discountAmount, 0);
+
       // Incrementar usedCount y actualizar timestamp
       const newUsedCount = coupon.usedCount + 1;
       transaction.update(couponRef, {
@@ -431,6 +488,8 @@ export const applyCouponHandler = async (
           orderId,
           discountType: coupon.discountType,
           discountValue: coupon.discountValue,
+          discountAmount,
+          finalTotal,
           usedCount: newUsedCount,
         },
         error: null,
@@ -438,7 +497,8 @@ export const applyCouponHandler = async (
     });
 
     return result;
-  } catch {
+  } catch (err) {
+    logger.error("applyCoupon failed", err);
     return { data: null, error: "Error interno del servidor", errorCode: "INTERNAL_ERROR" };
   }
-};
+}

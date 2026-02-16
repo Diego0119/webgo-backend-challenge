@@ -67,6 +67,7 @@ export interface ApplyCouponRequest {
   siteId: string;
   couponId: string;
   orderId: string;
+  cartTotal: number;
 }
 
 // ── Responses ───────────────────────────────────────────
@@ -93,6 +94,8 @@ export interface ApplyCouponResult {
   orderId: string;
   discountType: DiscountType;
   discountValue: number;
+  discountAmount: number;
+  finalTotal: number;
   usedCount: number;
 }
 

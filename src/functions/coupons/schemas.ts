@@ -58,7 +58,7 @@ type UpdateCouponInput = z.infer<typeof updateCouponBase>;
 export const updateCouponSchema = updateCouponBase
   .refine(
     (data: UpdateCouponInput) =>
-      data.discountType !== "percentage" || !data.discountValue || data.discountValue <= 100,
+      data.discountType !== "percentage" || data.discountValue === undefined || data.discountValue <= 100,
     { message: "Porcentaje no puede superar 100%", path: ["discountValue"] },
   )
   .refine(
@@ -92,4 +92,5 @@ export const applyCouponSchema = z.object({
   siteId: z.string().min(1, "siteId es requerido"),
   couponId: z.string().min(1, "couponId es requerido"),
   orderId: z.string().min(1, "orderId es requerido"),
+  cartTotal: z.number().nonnegative("cartTotal no puede ser negativo"),
 });

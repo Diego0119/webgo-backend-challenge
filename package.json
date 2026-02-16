@@ -11,7 +11,7 @@
     "build:watch": "tsc --watch",
     "dev": "npx firebase emulators:start --only firestore,functions,auth --project demo-webgo-challenge",
     "seed": "npx tsx seed.ts",
-    "test": "echo \"Escribe tus tests aquí\" && exit 0"
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "firebase-admin": "^13.6.1",
