@@ -217,3 +217,60 @@ Tienes **24 horas** desde que recibes este repositorio. Evaluamos calidad, no ve
 ---
 
 ¡Buena suerte! 🍀
+
+---
+
+## Decisiones de Diseño
+
+### Normalización de códigos
+
+Los códigos de cupón se normalizan a **mayúsculas** (`toUpperCase()`) al crear, actualizar y buscar. Así `"verano2026"` se almacena como `"VERANO2026"` y las búsquedas son case-insensitive sin necesidad de índices adicionales en Firestore.
+
+### Identificación del usuario (userId)
+
+El `userId` del cupón se obtiene del documento del **sitio en Firestore** (`sites/{siteId}.userId`), no del request. Esto garantiza que el cupón siempre quede asociado al dueño real del sitio, independientemente de quién haga la llamada.
+
+### Aislamiento multi-tenant
+
+Todas las operaciones de escritura (create, update, delete) verifican:
+1. Que el sitio exista en Firestore
+2. Que el cupón pertenezca al `siteId` indicado (en update/delete)
+
+Un `siteId` inexistente retorna `SITE_NOT_FOUND`. Un cupón que no pertenece al sitio retorna `FORBIDDEN`.
+
+### Validación en dos capas
+
+- **Capa 1 (Zod schemas):** valida estructura, tipos de dato, rangos (porcentaje ≤ 100, fechas válidas, valores positivos)
+- **Capa 2 (Handlers):** valida reglas de negocio que requieren consultar Firestore (código único, límites de plan, propiedad del cupón, fechas cruzadas en update)
+
+### Transacción atómica en applyCoupon
+
+`applyCoupon` usa `db.runTransaction()` para leer el cupón y actualizar `usedCount` atómicamente. Esto previene race conditions donde dos requests simultáneos podrían superar `maxUses`.
+
+### Separación validateCoupon / applyCoupon
+
+- `validateCoupon` recibe `cartTotal` y retorna el preview del descuento (`discountAmount`, `finalTotal`)
+- `applyCoupon` solo confirma la aplicación e incrementa `usedCount`, sin recalcular el descuento
+
+Esto sigue el flujo natural: primero el cliente valida, luego aplica.
+
+### Descuento fijo mayor al carrito
+
+Si un cupón de tipo `fixed` tiene un `discountValue` mayor al `cartTotal`, el descuento se limita al total del carrito (`Math.min(discountValue, cartTotal)`) y `finalTotal` nunca es negativo (`Math.max(finalTotal, 0)`).
+
+### Productos del seed
+
+Los productos (`prod001`–`prod005`) existen en Firestore pero no se usan en las funciones. Se recibe `cartTotal` directamente ya que el challenge no requiere validación a nivel de producto.
+
+### Requests de prueba
+
+Además de los requests originales para las 6 funciones, se agregaron casos edge en `test-requests.http` para validar reglas de negocio: código duplicado (RN1), normalización case-insensitive (RN2), fechas invertidas (RN3), agotamiento de `maxUses` (RN4), monto mínimo no cumplido (RN5), cupón desactivado (RN6), validación cruzada de fechas en update (RN8), acceso con sitio inexistente, aislamiento de datos y validación de campos vacíos/negativos.
+
+### Documentación del código
+
+El código fuente está comentado en los puntos clave:
+- Cada handler documenta los pasos de validación y lógica de negocio
+- Los schemas Zod incluyen mensajes de error descriptivos en español
+- Los helpers (`formatZodError`, `getSiteUserId`, `calculateDiscount`) están tipados y son autoexplicativos
+- Los `errorCode` siguen una convención consistente (`INVALID_INPUT`, `SITE_NOT_FOUND`, `COUPON_NOT_FOUND`, `FORBIDDEN`, `DUPLICATE_CODE`, `COUPON_LIMIT_REACHED`, `COUPON_INACTIVE`, `COUPON_EXPIRED`, `COUPON_NOT_YET_VALID`, `COUPON_MAX_USES`, `MIN_PURCHASE_NOT_MET`, `INTERNAL_ERROR`)
+

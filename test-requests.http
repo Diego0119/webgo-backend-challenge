@@ -274,6 +274,56 @@ Content-Type: application/json
 }
 
 ### ─────────────────────────────────────────────────
+### RN4. Validación de usos — Paso 1: crear cupón con maxUses: 1
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/createCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "code": "UNICO",
+    "discountType": "fixed",
+    "discountValue": 1000,
+    "maxUses": 1,
+    "validFrom": "2025-01-01T00:00:00-03:00",
+    "validUntil": "2027-12-31T23:59:59-03:00"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### RN4. Validación de usos — Paso 2: aplicar el cupón (usar couponId del paso 1)
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/applyCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "couponId": "jsmOlAHiA7a3EN4SzSoa",
+    "orderId": "order-maxuses-001"
+  }
+}
+
+### ─────────────────────────────────────────────────
+### RN4. Validación de usos — Paso 3: validar cupón agotado
+### Esperado: error COUPON_MAX_USES
+### ─────────────────────────────────────────────────
+
+POST {{baseUrl}}/validateCoupon
+Content-Type: application/json
+
+{
+  "data": {
+    "siteId": "{{siteId}}",
+    "code": "UNICO",
+    "cartTotal": 50000
+  }
+}
+
+### ─────────────────────────────────────────────────
 ### RN5. Mínimo de compra — cartTotal menor a minPurchase
 ### Esperado: error MIN_PURCHASE_NOT_MET
 ### (ejecutar después del request 1 que crea VERANO2026 con minPurchase: 10000)
