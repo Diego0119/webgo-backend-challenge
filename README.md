@@ -81,7 +81,7 @@ Body: { "data": { ... } }
 
 ---
 
-## Decisiones de diseno
+## Decisiones de diseño
 
 ### Validacion en dos capas
 

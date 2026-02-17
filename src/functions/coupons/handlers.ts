@@ -14,7 +14,11 @@ import {
   toCouponDocument,
   calculateDiscount,
   validateCouponEligibility,
+  validateUpdateFields,
+  buildCleanUpdates,
   withErrorHandling,
+  couponsCollection,
+  couponByCodeQuery,
 } from "./helpers.js";
 import { ErrorCode } from "../../types/common.js";
 import type { FunctionResponse } from "../../types/common.js";
@@ -23,8 +27,6 @@ import type {
   ValidateCouponResult,
   ApplyCouponResult,
 } from "../../types/coupon.js";
-
-const couponsCollection = db.collection("coupons");
 
 // ── 1. createCoupon ─────────────────────────────────────
 
@@ -59,43 +61,46 @@ export const createCouponHandler = withErrorHandling<CouponDocument>(
       };
     }
 
-    // Verificar código único por tienda (normalizado a mayúsculas)
+    // Verificar unicidad y crear cupón atómicamente con transacción
     const normalizedCode = code.toUpperCase();
-    const existing = await couponsCollection
-      .where("siteId", "==", siteId)
-      .where("code", "==", normalizedCode)
-      .limit(1)
-      .get();
 
-    if (!existing.empty) {
-      return {
-        data: null,
-        error: `Ya existe un cupón con el código "${normalizedCode}" en esta tienda`,
-        errorCode: ErrorCode.DUPLICATE_CODE,
+    type TxResult = FunctionResponse<CouponDocument>;
+
+    const result = await db.runTransaction(async (transaction): Promise<TxResult> => {
+      const existing = await transaction.get(couponByCodeQuery(siteId, code));
+
+      if (!existing.empty) {
+        return {
+          data: null,
+          error: `Ya existe un cupón con el código "${normalizedCode}" en esta tienda`,
+          errorCode: ErrorCode.DUPLICATE_CODE,
+        };
+      }
+
+      const now = new Date().toISOString();
+      const couponData = {
+        siteId,
+        userId,
+        code: normalizedCode,
+        discountType,
+        discountValue,
+        minPurchase: minPurchase ?? null,
+        maxUses: maxUses ?? null,
+        usedCount: 0,
+        validFrom,
+        validUntil,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
       };
-    }
 
-    // Crear cupón
-    const now = new Date().toISOString();
-    const couponData = {
-      siteId,
-      userId,
-      code: normalizedCode,
-      discountType,
-      discountValue,
-      minPurchase: minPurchase ?? null,
-      maxUses: maxUses ?? null,
-      usedCount: 0,
-      validFrom,
-      validUntil,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    };
+      const newDocRef = couponsCollection.doc();
+      transaction.set(newDocRef, couponData);
 
-    const docRef = await couponsCollection.add(couponData);
+      return { data: { id: newDocRef.id, ...couponData } as CouponDocument, error: null };
+    });
 
-    return { data: { id: docRef.id, ...couponData } as CouponDocument, error: null };
+    return result;
   },
 );
 
@@ -152,78 +157,50 @@ export const updateCouponHandler = withErrorHandling<CouponDocument>(
       return { data: null, error: "Sitio no encontrado", errorCode: ErrorCode.SITE_NOT_FOUND };
     }
 
-    // Obtener cupón y verificar que pertenece al sitio
-    const couponRef = couponsCollection.doc(couponId);
-    const couponDoc = await couponRef.get();
+    // Transacción atómica: verificar unicidad de código y aplicar update
+    type TxResult = FunctionResponse<CouponDocument>;
 
-    if (!couponDoc.exists) {
-      return { data: null, error: "Cupón no encontrado", errorCode: ErrorCode.COUPON_NOT_FOUND };
-    }
+    const result = await db.runTransaction(async (transaction): Promise<TxResult> => {
+      const couponRef = couponsCollection.doc(couponId);
+      const couponDoc = await transaction.get(couponRef);
 
-    const currentData = toCouponDocument(couponDoc);
+      if (!couponDoc.exists) {
+        return { data: null, error: "Cupón no encontrado", errorCode: ErrorCode.COUPON_NOT_FOUND };
+      }
 
-    if (currentData.siteId !== siteId) {
-      return { data: null, error: "El cupón no pertenece a esta tienda", errorCode: ErrorCode.FORBIDDEN };
-    }
+      const currentData = toCouponDocument(couponDoc);
 
-    // Validar código único si se está cambiando
-    if (updates.code) {
-      const normalizedCode = updates.code.toUpperCase();
-      if (normalizedCode !== currentData.code) {
-        const existing = await couponsCollection
-          .where("siteId", "==", siteId)
-          .where("code", "==", normalizedCode)
-          .limit(1)
-          .get();
+      if (currentData.siteId !== siteId) {
+        return { data: null, error: "El cupón no pertenece a esta tienda", errorCode: ErrorCode.FORBIDDEN };
+      }
 
-        if (!existing.empty) {
-          return {
-            data: null,
-            error: `Ya existe un cupón con el código "${normalizedCode}" en esta tienda`,
-            errorCode: ErrorCode.DUPLICATE_CODE,
-          };
+      // Validar código único si se está cambiando
+      if (updates.code) {
+        const normalizedCode = updates.code.toUpperCase();
+        if (normalizedCode !== currentData.code) {
+          const existing = await transaction.get(couponByCodeQuery(siteId, normalizedCode));
+          if (!existing.empty) {
+            return {
+              data: null,
+              error: `Ya existe un cupón con el código "${normalizedCode}" en esta tienda`,
+              errorCode: ErrorCode.DUPLICATE_CODE,
+            };
+          }
         }
+        updates.code = updates.code.toUpperCase();
       }
-      updates.code = updates.code.toUpperCase();
-    }
 
-    // Validación cruzada: porcentaje con datos existentes
-    const finalDiscountType = updates.discountType ?? currentData.discountType;
-    const finalDiscountValue = updates.discountValue ?? currentData.discountValue;
-    if (finalDiscountType === "percentage" && finalDiscountValue > 100) {
-      return {
-        data: null,
-        error: "Porcentaje no puede superar 100%",
-        errorCode: ErrorCode.INVALID_INPUT,
-      };
-    }
+      // Validación cruzada: porcentaje y fechas con datos existentes
+      const validationError = validateUpdateFields(currentData, updates);
+      if (validationError) return validationError;
 
-    // Validación cruzada: rango de fechas con datos existentes
-    const finalValidFrom = updates.validFrom ?? currentData.validFrom;
-    const finalValidUntil = updates.validUntil ?? currentData.validUntil;
-    if (new Date(finalValidFrom) >= new Date(finalValidUntil)) {
-      return {
-        data: null,
-        error: "validFrom debe ser anterior a validUntil",
-        errorCode: ErrorCode.INVALID_INPUT,
-      };
-    }
+      const cleanUpdates = buildCleanUpdates(updates);
+      transaction.update(couponRef, cleanUpdates);
 
-    // Filtrar campos undefined para no sobreescribir con undefined
-    const cleanUpdates: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(updates)) {
-      if (value !== undefined) {
-        cleanUpdates[key] = value;
-      }
-    }
+      return { data: { ...currentData, ...cleanUpdates } as CouponDocument, error: null };
+    });
 
-    cleanUpdates.updatedAt = new Date().toISOString();
-    await couponRef.update(cleanUpdates);
-
-    const updatedDoc = await couponRef.get();
-    const updatedData = toCouponDocument(updatedDoc);
-
-    return { data: updatedData, error: null };
+    return result;
   },
 );
 
@@ -292,12 +269,7 @@ export const validateCouponHandler = withErrorHandling<ValidateCouponResult>(
     }
 
     // Buscar cupón por código normalizado y siteId
-    const normalizedCode = code.toUpperCase();
-    const snapshot = await couponsCollection
-      .where("siteId", "==", siteId)
-      .where("code", "==", normalizedCode)
-      .limit(1)
-      .get();
+    const snapshot = await couponByCodeQuery(siteId, code).get();
 
     if (snapshot.empty) {
       return { data: null, error: "Cupón no encontrado", errorCode: ErrorCode.COUPON_NOT_FOUND };

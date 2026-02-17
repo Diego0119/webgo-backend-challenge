@@ -8,6 +8,18 @@ import type { FunctionResponse } from "../../types/common.js";
 import type { CouponDocument, DiscountType } from "../../types/coupon.js";
 
 const sitesCollection = db.collection("sites");
+export const couponsCollection = db.collection("coupons");
+
+/**
+ * Construye una query para buscar un cupón por código normalizado y siteId.
+ * Retorna la Query sin ejecutar, para uso directo (.get()) o en transacciones (transaction.get()).
+ */
+export function couponByCodeQuery(siteId: string, code: string) {
+  return couponsCollection
+    .where("siteId", "==", siteId)
+    .where("code", "==", code.toUpperCase())
+    .limit(1);
+}
 
 export function formatZodError(error: ZodError): string {
   return error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
@@ -82,6 +94,44 @@ export function validateCouponEligibility(
   }
 
   return null;
+}
+
+/**
+ * Valida reglas cruzadas de un update parcial contra los datos existentes del cupón.
+ * Combina valores nuevos con existentes para verificar porcentaje ≤ 100 y validFrom < validUntil.
+ * Retorna null si es válido, o un FunctionResponse con el error.
+ */
+export function validateUpdateFields(
+  currentData: CouponDocument,
+  updates: { discountType?: DiscountType; discountValue?: number; validFrom?: string; validUntil?: string },
+): FunctionResponse<never> | null {
+  const finalDiscountType = updates.discountType ?? currentData.discountType;
+  const finalDiscountValue = updates.discountValue ?? currentData.discountValue;
+  if (finalDiscountType === "percentage" && finalDiscountValue > 100) {
+    return { data: null, error: "Porcentaje no puede superar 100%", errorCode: ErrorCode.INVALID_INPUT };
+  }
+
+  const finalValidFrom = updates.validFrom ?? currentData.validFrom;
+  const finalValidUntil = updates.validUntil ?? currentData.validUntil;
+  if (new Date(finalValidFrom) >= new Date(finalValidUntil)) {
+    return { data: null, error: "validFrom debe ser anterior a validUntil", errorCode: ErrorCode.INVALID_INPUT };
+  }
+
+  return null;
+}
+
+/**
+ * Filtra campos undefined de un objeto de updates y agrega updatedAt.
+ */
+export function buildCleanUpdates(updates: Record<string, unknown>): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) {
+      clean[key] = value;
+    }
+  }
+  clean.updatedAt = new Date().toISOString();
+  return clean;
 }
 
 /**
