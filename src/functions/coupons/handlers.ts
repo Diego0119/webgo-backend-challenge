@@ -226,22 +226,28 @@ export const deleteCouponHandler = withErrorHandling<{ id: string }>(
       return { data: null, error: "Sitio no encontrado", errorCode: ErrorCode.SITE_NOT_FOUND };
     }
 
-    // Obtener cupón y verificar que pertenece al sitio
-    const couponRef = couponsCollection.doc(couponId);
-    const couponDoc = await couponRef.get();
+    // Transacción atómica: verificar propiedad y eliminar
+    type TxResult = FunctionResponse<{ id: string }>;
 
-    if (!couponDoc.exists) {
-      return { data: null, error: "Cupón no encontrado", errorCode: ErrorCode.COUPON_NOT_FOUND };
-    }
+    const result = await db.runTransaction(async (transaction): Promise<TxResult> => {
+      const couponRef = couponsCollection.doc(couponId);
+      const couponDoc = await transaction.get(couponRef);
 
-    const couponData = couponDoc.data();
-    if (couponData?.siteId !== siteId) {
-      return { data: null, error: "El cupón no pertenece a esta tienda", errorCode: ErrorCode.FORBIDDEN };
-    }
+      if (!couponDoc.exists) {
+        return { data: null, error: "Cupón no encontrado", errorCode: ErrorCode.COUPON_NOT_FOUND };
+      }
 
-    await couponRef.delete();
+      const couponData = couponDoc.data();
+      if (couponData?.siteId !== siteId) {
+        return { data: null, error: "El cupón no pertenece a esta tienda", errorCode: ErrorCode.FORBIDDEN };
+      }
 
-    return { data: { id: couponId }, error: null };
+      transaction.delete(couponRef);
+
+      return { data: { id: couponId }, error: null };
+    });
+
+    return result;
   },
 );
 

@@ -39,12 +39,12 @@ const COUPON_REQUIRED_FIELDS = [
 export function toCouponDocument(doc: FirebaseFirestore.DocumentSnapshot): CouponDocument {
   const data = doc.data();
   if (!data) {
-    throw new Error(`Document ${doc.id} has no data`);
+    throw new Error("Coupon document has no data");
   }
 
   const missing = COUPON_REQUIRED_FIELDS.filter((f) => data[f] === undefined);
   if (missing.length > 0) {
-    throw new Error(`Document ${doc.id} missing required fields: ${missing.join(", ")}`);
+    throw new Error(`Coupon document missing required fields: ${missing.join(", ")}`);
   }
 
   return { id: doc.id, ...data } as CouponDocument;
